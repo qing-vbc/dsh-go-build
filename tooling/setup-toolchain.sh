@@ -64,11 +64,11 @@ export PUB_HOSTED_URL="${PUB_HOSTED_URL:-https://pub.flutter-io.cn}" FLUTTER_STO
 
 # Versions Flutter's Gradle plugin defaults to (compileSdk / NDK).
 GRADLE_EXT=$(grep -rlE 'ndkVersion' "$FLUTTER_DIR/packages/flutter_tools/gradle/src/main" | head -1)
-NDK_VERSION=$(grep -oE 'ndkVersion[^"]*"[0-9.]+"' "$GRADLE_EXT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+NDK_VERSION=$(grep -rhoE 'ndkVersion[^0-9]*[0-9]+\.[0-9]+\.[0-9]+' "$FLUTTER_DIR/packages/flutter_tools/gradle" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 # 不同 Flutter 版本的 Gradle 插件文件里 ndkVersion 写法不同，探测不到时跳过 NDK
 # （DSH Go 用预编译 .so，不需要 NDK 编译；cmake 仍保留）。
 NDK_ARG=""
-[ -n "$NDK_VERSION" ] && NDK_ARG="ndk;$NDK_VERSION"
+if [ -n "$NDK_VERSION" ]; then NDK_ARG="ndk;$NDK_VERSION"; fi
 COMPILE_SDK=$(grep -oE 'compileSdkVersion[^0-9]*[0-9]+' "$GRADLE_EXT" | grep -oE '[0-9]+$' | head -1)
 log "Flutter defaults: compileSdk=$COMPILE_SDK ndk=$NDK_VERSION"
 
