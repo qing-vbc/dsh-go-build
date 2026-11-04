@@ -70,7 +70,7 @@ NDK_VERSION=$(grep -rhoE 'ndkVersion[^0-9]*[0-9]+\.[0-9]+\.[0-9]+' "$FLUTTER_DIR
 NDK_ARG=""
 if [ -n "$NDK_VERSION" ]; then NDK_ARG="ndk;$NDK_VERSION"; fi
 COMPILE_SDK=$(grep -rhoE 'compileSdkVersion[^0-9]*[0-9]+' "$FLUTTER_DIR/packages/flutter_tools/gradle" 2>/dev/null | grep -oE '[0-9]+$' | head -1 || true)
-[ -z "$COMPILE_SDK" ] && COMPILE_SDK=36
+if [ -z "$COMPILE_SDK" ]; then COMPILE_SDK=36; fi
 log "Flutter defaults: compileSdk=$COMPILE_SDK ndk=$NDK_VERSION"
 
 # Building the app requires accepting the Android SDK licenses.
