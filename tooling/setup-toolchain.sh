@@ -65,6 +65,10 @@ export PUB_HOSTED_URL="${PUB_HOSTED_URL:-https://pub.flutter-io.cn}" FLUTTER_STO
 # Versions Flutter's Gradle plugin defaults to (compileSdk / NDK).
 GRADLE_EXT=$(grep -rlE 'ndkVersion' "$FLUTTER_DIR/packages/flutter_tools/gradle/src/main" | head -1)
 NDK_VERSION=$(grep -oE 'ndkVersion[^"]*"[0-9.]+"' "$GRADLE_EXT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+# 不同 Flutter 版本的 Gradle 插件文件里 ndkVersion 写法不同，探测不到时跳过 NDK
+# （DSH Go 用预编译 .so，不需要 NDK 编译；cmake 仍保留）。
+NDK_ARG=""
+[ -n "$NDK_VERSION" ] && NDK_ARG="ndk;$NDK_VERSION"
 COMPILE_SDK=$(grep -oE 'compileSdkVersion[^0-9]*[0-9]+' "$GRADLE_EXT" | grep -oE '[0-9]+$' | head -1)
 log "Flutter defaults: compileSdk=$COMPILE_SDK ndk=$NDK_VERSION"
 
@@ -73,11 +77,11 @@ yes | sdkmanager --sdk_root="$SDK_DIR" --licenses >/dev/null || true
 if [ "${SKIP_EMULATOR:-}" = "1" ]; then
   sdkmanager --sdk_root="$SDK_DIR" \
     "platform-tools" "platforms;android-${COMPILE_SDK:-36}" "build-tools;${COMPILE_SDK:-36}.0.0" \
-    "ndk;${NDK_VERSION}" "cmake;3.22.1"
+    $NDK_ARG "cmake;3.22.1"
 else
   sdkmanager --sdk_root="$SDK_DIR" \
     "platform-tools" "platforms;android-${COMPILE_SDK:-36}" "build-tools;${COMPILE_SDK:-36}.0.0" \
-    "ndk;${NDK_VERSION}" "cmake;3.22.1" "emulator" "$SYSTEM_IMAGE"
+    $NDK_ARG "cmake;3.22.1" "emulator" "$SYSTEM_IMAGE"
 fi
 
 flutter config --no-analytics --android-sdk "$SDK_DIR" --jdk-dir "$JDK_DIR" >/dev/null
