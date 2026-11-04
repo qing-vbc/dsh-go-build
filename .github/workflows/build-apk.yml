@@ -1,0 +1,44 @@
+name: Build DSH Go APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'site/**'
+      - 'infra/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      FLUTTER_BASE_URL: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux
+      PUB_HOSTED_URL: https://pub.dev
+      FLUTTER_STORAGE_BASE_URL: https://storage.googleapis.com
+      NODE_MIRROR: https://nodejs.org/dist
+      NPM_REGISTRY: https://registry.npmjs.org
+      UBUNTU_MIRROR: https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release
+      UBUNTU_ARCHIVE_AMD64: https://archive.ubuntu.com/ubuntu
+      UBUNTU_ARCHIVE_ARM64: https://ports.ubuntu.com/ubuntu-ports
+      SKIP_EMULATOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up toolchain
+        run: bash tooling/setup-toolchain.sh
+      - name: Build runtime (arm64)
+        run: |
+          source tooling/env.sh
+          bash runtime/build-runtime.sh arm64-v8a
+      - name: Build APK (arm64)
+        run: |
+          source tooling/env.sh
+          DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64 --keep-daemon
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-go-arm64-release
+          path: app/build/app/outputs/flutter-apk/app-arm64-release.apk
+          if-no-files-found: error
