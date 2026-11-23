@@ -369,6 +369,12 @@ object PhoneRegistry {
      */
     @Volatile var unlocks: () -> PhoneUnlocks = { PhoneUnlocks() }
 
+    /**
+     * 二改：是否有正在跑的手机任务。熄屏广播用它决定「先唤醒解锁继续跑」还是「真的停止」。
+     * 由 PhoneControl 在 init 里接上；没接上时按 false 处理（等同官方行为）。
+     */
+    @Volatile var tasksActive: () -> Boolean = { false }
+
     fun gate(): UserGate? = overlayGate ?: notificationGate
 }
 

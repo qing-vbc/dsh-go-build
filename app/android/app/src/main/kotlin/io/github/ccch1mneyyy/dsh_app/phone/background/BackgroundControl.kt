@@ -812,6 +812,15 @@ class BackgroundControl private constructor(context: Context) {
         }
     }
 
+    /**
+     * 二改：亮屏并解锁（op=wake）。只在已有活动通道上发，不新建传输；失败返回 false。
+     * 熄屏广播里调用，必须在后台线程（会 sleep 约 1–2 秒）。
+     */
+    fun wake(): Boolean = runCatching {
+        val ch = activeChannel() ?: return false
+        ch.execute(Bundle().apply { putString(Proto.OP, Proto.OP_WAKE) }).getBoolean(Proto.OK)
+    }.getOrDefault(false)
+
     // ---- channel plumbing --------------------------------------------------
 
     private fun activeChannel(mayStart: () -> Boolean = { true }, explicit: Boolean = false,

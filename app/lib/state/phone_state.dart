@@ -10,6 +10,7 @@ import '../runtime/runtime_state.dart';
 import 'connection_state.dart';
 import 'engine_control.dart';
 import 'hosts_state.dart';
+import 'notify_state.dart' show appForegroundProvider;
 
 export '../phone/phone_channel.dart';
 
@@ -565,7 +566,9 @@ final phoneStopWatcherProvider = Provider<void>((ref) {
       // Ambient interruption stops phone work, not every conversation on the host.
       final userStop = s.task.stopped && (s.task.stopSource == null || s.task.stopSource == 'USER');
       if (userStop && !userStopped && interrupted && !modernSeen && (capability != null || !versioned)) {
-        unawaited(_cancelLocalTurns(ref));
+        // 二改：App 在后台（含熄屏/锁屏）时，绝不因为手机操控停止去取消会话——
+        // 模型必须继续跑完。前台时保留官方行为。
+        if (ref.read(appForegroundProvider)) unawaited(_cancelLocalTurns(ref));
       }
       // A later ambient source in the same hold must not re-arm cancel-all.
       userStopped = s.task.stopped && (userStopped || userStop);

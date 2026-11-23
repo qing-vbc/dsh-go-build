@@ -1682,6 +1682,9 @@ class ChatController extends Notifier<ChatState> {
   /// [failure] in the banner, when it did not go through.
   Future<bool> _stop(_ChatOperation operation, {String? failure}) async {
     if (!_currentOperation(operation)) return false;
+    // 二改：后台/锁屏时拒绝取消会话。这个入口只由前台 UI 触发，正常使用不受影响；
+    // 加这层是为了任何系统回调都不能在后台把模型停掉。
+    if (!ref.read(appForegroundProvider)) return false;
     _beginStopping(operation);
     try {
       await operation.client.cancel(sessionId);

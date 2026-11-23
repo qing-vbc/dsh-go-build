@@ -7,6 +7,7 @@
 
 package io.github.ccch1mneyyy.dsh_app.phone.a11y
 
+import io.github.ccch1mneyyy.dsh_app.phone.background.BackgroundControl
 import io.github.ccch1mneyyy.dsh_app.phone.background.Reasons
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneAppIdentity
 import io.github.ccch1mneyyy.dsh_app.i18n.AppStrings
@@ -82,6 +83,24 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
     /** Wall-clock form of a screenshot's system timestamp (only touched inside [lock]). */
     private val shotClock = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val lock = Any()
+
+    /** 二改：熄屏/锁屏且任务在跑时，最多每 8 秒尝试一次唤醒，避免每步都卡 1–2 秒。 */
+    @Volatile private var lastWakeTry = 0L
+    private val wakeRetryMs = 8_000L
+
+    /** 二改：任务在跑时先走特权通道唤醒解锁，再重新判断；最多等 3 秒。 */
+    private fun wakeIfTaskRunning() {
+        if (!PhoneRegistry.tasksActive()) return
+        val now = SystemClock.uptimeMillis()
+        if (now - lastWakeTry <= wakeRetryMs) return
+        lastWakeTry = now
+        runCatching { BackgroundControl.get(service).wake() }
+        var waited = 0L
+        while ((!power.isInteractive || keyguard.isKeyguardLocked) && waited < 3_000L) {
+            runCatching { Thread.sleep(150) }
+            waited += 150
+        }
+    }
     @Volatile private var latest: Snapshot? = null
     private val visual = MainVisualState(Any())
     private val focusLock = Any()
@@ -135,9 +154,15 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
             // l10n:keep agent screen result
             Availability(false, "DSH 的无障碍服务没有连接。请用户到 系统设置 → 无障碍 里重新打开「DSH 手机操控」。", AppStrings.get(service, R.string.phone_availability_disconnected))
         // l10n:keep agent screen result
-        !power.isInteractive -> Availability(false, "屏幕已关闭。DSH 只在亮屏、解锁时操作手机，请用户点亮并解锁。", AppStrings.get(service, R.string.phone_availability_screen_off))
-        // l10n:keep agent screen result
-        keyguard.isKeyguardLocked -> Availability(false, "手机已锁屏。请用户解锁后再继续。", AppStrings.get(service, R.string.phone_availability_locked))
+        !power.isInteractive || keyguard.isKeyguardLocked -> {
+            // 二改：定时任务场景，熄屏/锁屏时先尝试唤醒解锁，再重新判断。
+            wakeIfTaskRunning()
+            when {
+                !power.isInteractive -> Availability(false, "屏幕已关闭。DSH 只在亮屏、解锁时操作手机，请用户点亮并解锁。", AppStrings.get(service, R.string.phone_availability_screen_off))
+                keyguard.isKeyguardLocked -> Availability(false, "手机已锁屏。请用户解锁后再继续。", AppStrings.get(service, R.string.phone_availability_locked))
+                else -> Availability(true)
+            }
+        }
         else -> Availability(true)
     }).also { if (!it.ok) { visual.invalidate(); clearFocusCandidate() } }
 

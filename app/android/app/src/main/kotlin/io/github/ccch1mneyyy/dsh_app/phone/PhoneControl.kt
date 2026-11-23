@@ -348,6 +348,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         PhoneRegistry.promptGate = prompts
         PhoneRegistry.controlListener = this
         PhoneRegistry.unlocks = { policies().unlocks }
+        PhoneRegistry.tasksActive = { tasks.snapshot().active }
         // Never enter registry from a BackgroundControl callback's ownership monitor.
         background.onStatusChanged = { ticker.execute { sessions.backgroundCapacityChanged() } }
         background.onPreviewChanged = { main.post { preview.refresh() } }
@@ -681,10 +682,16 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
                 if (intent.action != Intent.ACTION_SCREEN_OFF) return
                 selfCheck.stop()
                 preview.refresh()
-                background.requestInterrupt {
-                    sessions.stopAll("熄屏", PhoneTasks.StopSource.SCREEN_OFF) // l10n:keep agent stop reason
+                // 二改：任务在跑时先唤醒解锁再继续。必须后台线程：input + sleep 放主线程会 ANR，
+                // 系统会连无障碍服务一起杀。唤醒成功就不停任务；失败才回到官方的熄屏停止。
+                if (PhoneRegistry.tasksActive()) {
+                    Thread({
+                        val woke = runCatching { background.wake() }.getOrDefault(false)
+                        if (!woke) main.post { stopForScreenOff() }
+                    }, "dsh-phone-wake").apply { isDaemon = true }.start()
+                    return
                 }
-                cleanupIo.execute { background.finishInterrupt() }
+                stopForScreenOff()
             }
         }
         return try {
@@ -692,6 +699,14 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
             screenReceiver = receiver
             true
         } catch (_: Exception) { false }
+    }
+
+    /** 官方熄屏停止：先封住 gate，再在清理线程上断开传输。 */
+    private fun stopForScreenOff() {
+        background.requestInterrupt {
+            sessions.stopAll("熄屏", PhoneTasks.StopSource.SCREEN_OFF) // l10n:keep agent stop reason
+        }
+        cleanupIo.execute { background.finishInterrupt() }
     }
 
     // ── Things the plugin asks for ──────────────────────────────────────────────────

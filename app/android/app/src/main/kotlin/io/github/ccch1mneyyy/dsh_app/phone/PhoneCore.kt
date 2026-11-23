@@ -265,6 +265,13 @@ class PhoneCore(
     private fun runCall(name: String, args: Args, callOwner: AtomicReference<PhoneTasks.Owner?>, prepared: PreparedCall? = null,
                         executionWorker: SerialWorker = worker, remainingMs: () -> Long = { MAX_TOTAL_MS }): ToolOutput {
         if (prepared?.replay == null) rejection(name)?.let { return it }
+        // 二改：root 工具独立执行，不进任务/worker——锁屏、没有屏幕、无障碍没连上时也能用；
+        // 不受「任务停止」影响，结果直接回给模型。
+        if (prepared?.replay == null && name == PhoneToolCatalog.ROOT) {
+            val out = root(args)
+            out.summary?.let { log.add(name, null, it, out.decision ?: if (out.error) "error" else "ok") }
+            return ToolOutput(out.text, out.error)
+        }
         val remaining = remainingMs()
         val outcome = if (remaining <= 0) SerialWorker.Outcome.TimedOut(queued = true) else
             executionWorker.run(budgetMs(name), remaining, owner = tasks) { scope ->
@@ -372,6 +379,7 @@ class PhoneCore(
             if (call.replay != null) return replay(call, scope, owner)
             return when (name) {
                 PhoneToolCatalog.ANDROID_SHELL -> androidShell(a, scope, owner)
+                PhoneToolCatalog.ROOT -> root(a)
                 PhoneToolCatalog.APPS -> apps(a, owner)
                 PhoneToolCatalog.OPEN -> open(call, scope, owner)
                 PhoneToolCatalog.INTENT -> intent(call, scope, owner)
@@ -393,6 +401,38 @@ class PhoneCore(
 
     private fun current(owner: PhoneTasks.Owner): Boolean =
         tasks.isCurrent(owner) && !Thread.currentThread().isInterrupted
+
+    /**
+     * 二改：以 root 身份执行一条 shell 命令。su 由系统/root 管理器授权（KernelSU / Magisk / APatch）；
+     * 无 su 或未授权时把 stderr 原样带回，由模型转述给用户。
+     */
+    private fun root(a: Args): Out {
+        val cmd = a.str("command")?.trim() ?: return Out("root 需要 command 参数。", error = true)
+        if (cmd.isEmpty()) return Out("root 需要 command 参数。", error = true)
+        if (cmd.toByteArray(Charsets.UTF_8).size > 16_384)
+            return Out("命令太长（超过 16 KB），请拆开执行。", error = true)
+        // 默认 60 秒、最多 120 秒；长流程请自己用 nohup 丢后台。
+        val timeout = (a.int("timeoutMs") ?: 60_000).coerceIn(1_000, 120_000)
+        val su = listOf("/system/bin/su", "/system/xbin/su", "/system/sbin/su")
+            .firstOrNull { java.io.File(it).exists() } ?: "su"
+        return try {
+            val p = ProcessBuilder(su, "-c", cmd).redirectErrorStream(true).start()
+            val done = p.waitFor(timeout.toLong(), java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (!done) {
+                p.destroyForcibly()
+                Out("root 命令超时（${timeout}ms），已终止。长流程请用 nohup … & 丢后台。", error = true)
+            } else {
+                val out = p.inputStream.bufferedReader().use { it.readText() }
+                Out(out.ifBlank { "(无输出)" } + "\nexit=" + p.exitValue(), error = p.exitValue() != 0,
+                    summary = "root shell", decision = if (p.exitValue() == 0) "ok" else "failed")
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            Out("root 命令被中断（任务停止或人工取消），未完成。这不是授权问题。", error = true)
+        } catch (e: Exception) {
+            Out("root 执行失败：" + e.javaClass.simpleName + ": " + (e.message ?: "未知原因") + "。", error = true)
+        }
+    }
 
     private fun androidShell(a: Args, scope: SerialWorker.Scope, owner: PhoneTasks.Owner): Out {
         val request = PhoneAndroidShell.parse(a) ?: return Out(
@@ -1383,6 +1423,7 @@ class PhoneCore(
         /** The call's own time, not counting waits for the person. */
         fun budgetMs(tool: String): Long = when (tool) {
             PhoneToolCatalog.ANDROID_SHELL -> 120_000L
+            PhoneToolCatalog.ROOT -> 60_000L
             PhoneToolCatalog.APPS -> 15_000L
             PhoneToolCatalog.NOTIFY, PhoneToolCatalog.CLIPBOARD -> 10_000L
             PhoneToolCatalog.OPEN, PhoneToolCatalog.INTENT -> 25_000L

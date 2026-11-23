@@ -86,6 +86,8 @@ class PrivilegedDisplayCore internal constructor(
     private val displays by lazy { privileged.getSystemService(DisplayManager::class.java) }
     private val activities by lazy { privileged.getSystemService(ActivityManager::class.java) }
     private val keyguard by lazy { privileged.getSystemService(KeyguardManager::class.java) }
+    /** 二改：唤醒时判断是否已亮屏。 */
+    private val power by lazy { privileged.getSystemService(android.os.PowerManager::class.java) }
     private val taskDisplayIdField by lazy {
         runCatching { ActivityManager.RunningTaskInfo::class.java.getField("displayId") }.getOrNull()
     }
@@ -203,6 +205,12 @@ class PrivilegedDisplayCore internal constructor(
             }
             if (op == Proto.OP_PREVIEW) {
                 return previewRequest(request)
+            }
+            // 二改：定时任务熄屏时，由 core 触发亮屏 + 上滑解锁，任务继续跑。
+            if (op == Proto.OP_WAKE) {
+                wakeAndUnlock()
+                response.putBoolean(Proto.OK, true)
+                return response
             }
             if (op == Proto.OP_DESTROY) {
                 releaseAll()
@@ -2070,6 +2078,43 @@ class PrivilegedDisplayCore internal constructor(
 
     private fun invoke(target: Any, method: String): Any? =
         UiAutomation::class.java.getMethod(method).invoke(target)
+
+    /**
+     * 二改：亮屏 + 上滑解锁（op=wake）。无锁屏密码时用 shell uid 执行 `input` 即可；
+     * 有密码时无法自动解锁，上滑只到密码页，后续操作仍会被 availability() 拒绝。
+     */
+    private fun wakeAndUnlock() {
+        sleepChecked(150)
+        if (power?.isInteractive != true) {
+            exec("/system/bin/input", "keyevent", "224")
+            sleepChecked(700)
+        }
+        var tries = 0
+        while (keyguard?.isKeyguardLocked == true && tries < 2) {
+            val (w, h) = screenSize()
+            exec("/system/bin/input", "swipe", "${w / 2}", "${(h * 0.9).toInt()}",
+                "${w / 2}", "${(h * 0.35).toInt()}")
+            sleepChecked(500)
+            tries++
+        }
+    }
+
+    private fun screenSize(): Pair<Int, Int> = runCatching {
+        val dm = privileged.getSystemService(DisplayManager::class.java)
+        val display = dm?.getDisplay(Display.DEFAULT_DISPLAY)
+        val metrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        display?.getRealMetrics(metrics)
+        metrics.widthPixels to metrics.heightPixels
+    }.getOrDefault(1080 to 2400)
+
+    /** Runs a shell-uid command and returns stdout; failures yield "". */
+    private fun exec(vararg args: String): String = runCatching {
+        val p = ProcessBuilder(*args).redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().use { it.readText() }
+        p.waitFor()
+        out
+    }.getOrDefault("")
 
     private fun sleepChecked(ms: Long) {
         if (ms <= 0) return

@@ -23,6 +23,8 @@ object PhoneToolCatalog {
     const val TAP_XY = "tap_xy"
     const val HANDOFF = "handoff"
     const val ANDROID_SHELL = "android_shell"
+    /** 二改：以 root 身份跑一条 shell 命令（AI 直属工具，不经屏幕/无障碍/确认框）。 */
+    const val ROOT = "root"
     const val DIAGNOSTICS = DiagnosticsTool.NAME
 
     class Tool(val name: String, val description: String, val properties: Map<String, Any?>, val required: List<String>) {
@@ -278,6 +280,18 @@ object PhoneToolCatalog {
                 "refresh" to bool("默认true，主动刷新；false仅读取已发布的普通诊断缓存，不含手动输入法报告"),
             ),
             emptyList(),
+        ),
+        Tool(
+            ROOT,
+            // l10n:keep agent tool catalog
+            "以 root 身份执行一条 shell 命令（需手机已 root，并在 root 管理器里永久授权 DSH Go）。只返回命令输出，不经过屏幕、无障碍服务或确认框，锁屏/熄屏时也能用。不要执行交互式或长时间挂起的命令；长流程请用 nohup … & 丢后台，不要依赖工具等待。",
+            linkedMapOf(
+                // l10n:keep agent tool catalog
+                "command" to str("要执行的 shell 命令（su -c，非交互式）"),
+                // l10n:keep agent tool catalog
+                "timeoutMs" to int("超时毫秒（默认 60000，最大 120000）；长流程请用 nohup 丢后台"),
+            ),
+            listOf("command"),
         ),
     )
 

@@ -10,6 +10,8 @@ FLUTTER_VERSION="${FLUTTER_VERSION:-3.47.7}"
 FLUTTER_SHA256="${FLUTTER_SHA256:-af7455f540df951184c7953fbe3cf884766e7541dacf8571f9f582db03dd6230}"
 CMDLINE_TOOLS_BUILD="${CMDLINE_TOOLS_BUILD:-13114758}"
 SYSTEM_IMAGE="${SYSTEM_IMAGE:-system-images;android-35;google_apis;x86_64}"
+# 二改：CI 只出 arm64 真机包，不需要模拟器镜像（省 1–2 GB 下载和几分钟）。
+SKIP_EMULATOR="${SKIP_EMULATOR:-0}"
 
 JDK_DIR="$DEV_ROOT/jdk-17"
 FLUTTER_DIR="$DEV_ROOT/flutter"
@@ -85,15 +87,18 @@ export PUB_HOSTED_URL="https://pub.flutter-io.cn" FLUTTER_STORAGE_BASE_URL="http
 
 # Versions Flutter's Gradle plugin defaults to (compileSdk / NDK).
 GRADLE_EXT=$(find "$FLUTTER_DIR/packages/flutter_tools/gradle/src/main" -name 'FlutterExtension.*' -print -quit)
-NDK_VERSION=$(grep -oE 'ndkVersion[^"]*"[0-9.]+"' "$GRADLE_EXT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-COMPILE_SDK=$(grep -oE 'compileSdkVersion[^0-9]*[0-9]+' "$GRADLE_EXT" | grep -oE '[0-9]+$' | head -1)
+# 二改：探测失败不能带着 set -e 退出（grep 无匹配时管道非零）。
+NDK_VERSION=$(grep -oE 'ndkVersion[^"]*"[0-9.]+"' "$GRADLE_EXT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) || true
+COMPILE_SDK=$(grep -oE 'compileSdkVersion[^0-9]*[0-9]+' "$GRADLE_EXT" | grep -oE '[0-9]+$' | head -1) || true
 log "Flutter defaults: compileSdk=$COMPILE_SDK ndk=$NDK_VERSION"
 
 # Building the app requires accepting the Android SDK licenses.
 yes | sdkmanager --sdk_root="$SDK_DIR" --licenses >/dev/null || true
-sdkmanager --sdk_root="$SDK_DIR" \
-  "platform-tools" "platforms;android-${COMPILE_SDK:-36}" "build-tools;${COMPILE_SDK:-36}.0.0" \
-  "ndk;${NDK_VERSION}" "cmake;3.22.1" "emulator" "$SYSTEM_IMAGE"
+SDK_PARTS=("platform-tools" "platforms;android-${COMPILE_SDK:-36}" "build-tools;${COMPILE_SDK:-36}.0.0" "cmake;3.22.1")
+# 二改：应用用预编译 .so，NDK 探测为空时跳过（`sdkmanager "ndk;"` 会直接失败）。
+if [ -n "${NDK_VERSION:-}" ]; then SDK_PARTS+=("ndk;$NDK_VERSION"); fi
+if [ "$SKIP_EMULATOR" != "1" ]; then SDK_PARTS+=("emulator" "$SYSTEM_IMAGE"); fi
+sdkmanager --sdk_root="$SDK_DIR" "${SDK_PARTS[@]}"
 
 flutter config --no-analytics --android-sdk "$SDK_DIR" --jdk-dir "$JDK_DIR" >/dev/null
 flutter precache --android

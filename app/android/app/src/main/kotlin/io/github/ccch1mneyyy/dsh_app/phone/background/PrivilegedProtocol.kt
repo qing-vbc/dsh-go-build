@@ -133,6 +133,8 @@ object Proto {
 
     /** 自动恢复无障碍: grants [APP_PACKAGE] WRITE_SECURE_SETTINGS in [USER]; nothing else is grantable. */
     const val OP_GRANT_SECURE_SETTINGS = "grantSecureSettings"
+    /** 二改：亮屏并上滑解锁（无锁屏密码时）；与任何 display/owner 无关，可在锁屏时调用。 */
+    const val OP_WAKE = "wake"
     const val USER = "user"
     const val APP_PACKAGE = "io.github.ccch1mneyyy.dsh_app"
 

@@ -22,6 +22,7 @@ import android.view.Display
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneRegistry
+import io.github.ccch1mneyyy.dsh_app.phone.background.BackgroundControl
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneTasks
 
 /**
@@ -74,8 +75,21 @@ class PhoneA11yService : AccessibilityService() {
 
     private val screenOff = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != Intent.ACTION_SCREEN_OFF) return
+            // 二改：任务在跑时先唤醒解锁再继续（后台线程：input + sleep 在主线程会 ANR）。
+            if (PhoneRegistry.tasksActive()) {
+                Thread({
+                    val woke = runCatching { BackgroundControl.get(this@PhoneA11yService).wake() }
+                        .getOrDefault(false)
+                    if (!woke) android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        // l10n:keep agent stop reason
+                        stopAll("屏幕关闭了", PhoneTasks.StopSource.SCREEN_OFF)
+                    }
+                }, "dsh-phone-wake").apply { isDaemon = true }.start()
+                return
+            }
             // l10n:keep agent stop reason
-            if (intent.action == Intent.ACTION_SCREEN_OFF) stopAll("屏幕关闭了", PhoneTasks.StopSource.SCREEN_OFF)
+            stopAll("屏幕关闭了", PhoneTasks.StopSource.SCREEN_OFF)
         }
     }
 

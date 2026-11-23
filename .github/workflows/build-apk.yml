@@ -1,0 +1,51 @@
+name: Build DSH Go APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'site/**'
+      - 'infra/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      # runtime/build-runtime.sh 支持用环境变量换镜像；Actions 上直连官方源更稳。
+      NODE_MIRROR: https://nodejs.org/dist
+      NPM_REGISTRY: https://registry.npmjs.org
+      UBUNTU_MIRROR: https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release
+      UBUNTU_ARCHIVE_AMD64: https://archive.ubuntu.com/ubuntu
+      UBUNTU_ARCHIVE_ARM64: https://ports.ubuntu.com/ubuntu-ports
+      # 真机包不需要模拟器镜像（省 1–2 GB 和几分钟）。
+      SKIP_EMULATOR: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore the runtime download cache
+        uses: actions/cache@v4
+        with:
+          path: runtime/.cache
+          key: runtime-cache-v1-${{ hashFiles('runtime/build-runtime.sh', 'runtime/locks/**') }}
+          restore-keys: runtime-cache-v1-
+      - name: Set up toolchain
+        run: |
+          set -o pipefail
+          bash -x tooling/setup-toolchain.sh 2>&1 | tail -150
+      - name: Build runtime (arm64)
+        run: |
+          source tooling/env.sh
+          bash runtime/build-runtime.sh arm64-v8a
+      - name: Build APK (arm64)
+        run: |
+          source tooling/env.sh
+          DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64 --no-companion --keep-daemon
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-go-arm64-release
+          path: app/build/app/outputs/flutter-apk/app-arm64-release.apk
+          if-no-files-found: error
