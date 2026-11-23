@@ -27,6 +27,8 @@ jobs:
       UBUNTU_ARCHIVE_ARM64: https://ports.ubuntu.com/ubuntu-ports
       # 真机包不需要模拟器镜像（省 1–2 GB 和几分钟）。
       SKIP_EMULATOR: "1"
+      # 官方 gradle 默认先走 aliyun 镜像；从美国 runner 访问会 502，CI 用官方仓库。
+      DSH_MAVEN_MIRRORS: "0"
     steps:
       - uses: actions/checkout@v4
       - name: Restore the runtime download cache
