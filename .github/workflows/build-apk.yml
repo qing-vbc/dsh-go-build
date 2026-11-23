@@ -15,6 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
+      # Firebase/Google 官方源在 Actions（美国）上最快；国内镜像留给本地构建用。
+      FLUTTER_BASE_URL: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux
+      FLUTTER_STORAGE_BASE_URL: https://storage.googleapis.com
+      PUB_HOSTED_URL: https://pub.dev
       # runtime/build-runtime.sh 支持用环境变量换镜像；Actions 上直连官方源更稳。
       NODE_MIRROR: https://nodejs.org/dist
       NPM_REGISTRY: https://registry.npmjs.org
