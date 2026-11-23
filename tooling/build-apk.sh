@@ -195,9 +195,10 @@ fi
 # libtawcroot.so for the tawcroot launch method (the default where available), from the pinned tawc commit.
 # Release builds must carry it; other builds go on without it (the option shows unavailable).
 if ! python3 -I "$ROOT/runtime/tawcroot/build.py"; then
-  [[ $mode == release ]] && die "tawcroot: libtawcroot.so did not build"
+  # 二改：个人 CI 不强制 tawcroot（缺 libtawcroot.so 时 App 会自动退回 PRoot 启动），
+  # 避免因为 NDK 版本探测问题整包打不出来。
   rm -rf "$ROOT/runtime/out-tawcroot" # never package an older build's library
-  echo "build-apk: building without libtawcroot.so; the tawcroot launch option will be unavailable" >&2
+  echo "build-apk: 构建时没有 libtawcroot.so；App 会自动退回 PRoot 启动" >&2
 fi
 
 # aapt2 to read back what was built (optional).

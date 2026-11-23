@@ -39,6 +39,14 @@ jobs:
         run: |
           set -o pipefail
           bash -x tooling/setup-toolchain.sh 2>&1 | tail -150
+      - name: Check NDK (diagnostic)
+        run: |
+          source tooling/env.sh
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls -d "$ANDROID_HOME"/ndk/* || true
+          for f in "$ANDROID_HOME"/ndk/*/source.properties; do
+            echo "== $f"; cat "$f" || true
+          done
       - name: Build runtime (arm64)
         run: |
           source tooling/env.sh
