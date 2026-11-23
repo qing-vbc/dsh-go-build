@@ -37,6 +37,14 @@ jobs:
           path: runtime/.cache
           key: runtime-cache-v1-${{ hashFiles('runtime/build-runtime.sh', 'runtime/locks/**') }}
           restore-keys: runtime-cache-v1-
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('app/android/**/*.kts', 'app/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
       - name: Write the signing key
         env:
           KEYSTORE_B64: ${{ secrets.DSH_KEYSTORE_BASE64 }}
