@@ -46,8 +46,9 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
             printf '%s' "$KEYSTORE_B64" | base64 -d > app/android/dshgo-release.p12
-            printf 'storeFile=dshgo-release.p12\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
-              "$STORE_PASS" "$KEY_ALIAS" "$KEY_PASS" > app/android/key.properties
+            # storeFile 相对 app/android/app 解析，这里直接写绝对路径。
+            printf 'storeFile=%s/app/android/dshgo-release.p12\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+              "$GITHUB_WORKSPACE" "$STORE_PASS" "$KEY_ALIAS" "$KEY_PASS" > app/android/key.properties
             echo "release key configured"
           else
             echo "no signing key secret; falling back to debug key" >&2
