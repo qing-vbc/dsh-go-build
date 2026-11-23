@@ -37,6 +37,21 @@ jobs:
           path: runtime/.cache
           key: runtime-cache-v1-${{ hashFiles('runtime/build-runtime.sh', 'runtime/locks/**') }}
           restore-keys: runtime-cache-v1-
+      - name: Write the signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.DSH_KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.DSH_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.DSH_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DSH_KEY_ALIAS }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 -d > app/android/dshgo-release.p12
+            printf 'storeFile=dshgo-release.p12\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+              "$STORE_PASS" "$KEY_ALIAS" "$KEY_PASS" > app/android/key.properties
+            echo "release key configured"
+          else
+            echo "no signing key secret; falling back to debug key" >&2
+          fi
       - name: Set up toolchain
         run: |
           set -o pipefail

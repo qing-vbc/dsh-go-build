@@ -2089,6 +2089,10 @@ class PrivilegedDisplayCore internal constructor(
             exec("/system/bin/input", "keyevent", "224")
             sleepChecked(700)
         }
+        // 二改：优先 wm dismiss-keyguard（shell/root 可用；无锁屏密码时直接解开），
+        // 比上滑可靠。失败再退回上滑。
+        exec("/system/bin/wm", "dismiss-keyguard")
+        sleepChecked(400)
         var tries = 0
         while (keyguard?.isKeyguardLocked == true && tries < 2) {
             val (w, h) = screenSize()
@@ -2096,6 +2100,12 @@ class PrivilegedDisplayCore internal constructor(
                 "${w / 2}", "${(h * 0.35).toInt()}")
             sleepChecked(500)
             tries++
+        }
+        // 解锁动画可能还在播；最多再等 1.5 秒，别让上层立刻误判成「锁屏中」。
+        var waited = 0
+        while (keyguard?.isKeyguardLocked == true && waited < 1500) {
+            sleepChecked(150)
+            waited += 150
         }
     }
 
